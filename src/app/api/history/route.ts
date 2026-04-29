@@ -9,14 +9,23 @@ export async function GET(req: NextRequest) {
     let sessionId = req.nextUrl.searchParams.get("sessionId");
     
     if (sessionId) {
-      // Handle "legacy" or "null" string from frontend
-      const isLegacy = sessionId === "legacy" || sessionId === "null";
-      const query = isLegacy ? { sessionId: { $in: [null, ""] } } : { sessionId };
-      if (isLegacy && userId) {
-        (query as any).userId = userId;
-      }
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(sessionId);
+      const query = isObjectId 
+        ? { _id: sessionId } 
+        : { sessionId };
 
       const messages = await Chat.find(query).sort({ createdAt: 1 });
+      
+      // If we only found one legacy message, also include the assistant's reply if it exists
+      if (messages.length === 1 && isObjectId) {
+        const assistantReply = await Chat.findOne({
+          userId: messages[0].userId,
+          role: "assistant",
+          createdAt: { $gt: messages[0].createdAt }
+        }).sort({ createdAt: 1 });
+        if (assistantReply) messages.push(assistantReply);
+      }
+
       return NextResponse.json({ messages });
     }
 
@@ -25,13 +34,13 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch unique sessions for this user using aggregation
-    // We get the first 'user' message for each unique sessionId to use as the title
     const pastConvos = await Chat.aggregate([
       { $match: { userId, role: "user" } },
       { $sort: { createdAt: -1 } },
       {
         $group: {
-          _id: { $ifNull: ["$sessionId", "legacy"] },
+          // If sessionId exists, group by it. If not, treat each message as its own session.
+          _id: { $ifNull: ["$sessionId", { $toString: "$_id" }] },
           content: { $first: "$content" },
           createdAt: { $first: "$createdAt" },
         }

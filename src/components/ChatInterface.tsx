@@ -595,9 +595,10 @@ function ConvoCard({ convo, active, onClick }: { convo: Convo; active?: boolean;
           {convo.content}
         </span>
       </div>
-      <span className={`text-[10px] font-bold shrink-0 ${active ? "text-tuk-green/60" : "text-slate-300"}`}>
-        {new Date(convo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-      </span>
+      <div className="flex flex-col text-[10px] font-bold shrink-0 items-end text-slate-300 group-hover:text-tuk-green/60 transition-colors">
+        <span>{new Date(convo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+        <span>{new Date(convo.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
     </button>
   );
 }
