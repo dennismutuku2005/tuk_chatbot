@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TUK Chatbot - Powered by Google Gemini, Next.js, and MongoDB",
-  description: "The official intelligent academic assistant for the Technical University of Kenya, powered by state-of-the-art AI.",
+  title: "TUK Chatbot - Institutional Academic Assistant",
+  description: "Official intelligent companion for the Technical University of Kenya",
 };
 
 import { Providers } from "@/components/Providers";
