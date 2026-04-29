@@ -181,7 +181,7 @@ export default function ChatInterface() {
 
         {/* Input Area with Gold Button */}
         <div className="p-6 bg-white border-t border-slate-100">
-          <div className="max-w-3xl mx-auto flex items-end gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200 shadow-sm focus-within:ring-2 focus-within:ring-tuk-green/10 focus-within:border-tuk-green transition-all">
+          <div className="max-w-3xl mx-auto flex items-end gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200 shadow-sm transition-all">
             <div className="flex-1 flex flex-col">
               <textarea 
                 ref={textareaRef}
@@ -193,7 +193,7 @@ export default function ChatInterface() {
                     handleSend();
                   }
                 }}
-                className="w-full bg-transparent border-none focus:ring-0 text-sm resize-none py-3 px-3 min-h-[44px] max-h-32 custom-scrollbar text-slate-700 font-medium" 
+                className="w-full bg-transparent border-none focus:ring-0 outline-none text-sm resize-none py-3 px-3 min-h-[44px] max-h-32 custom-scrollbar text-slate-700 font-medium" 
                 placeholder="Ask your question here..."
               />
               <div className="flex items-center gap-1 px-2 pb-1">
