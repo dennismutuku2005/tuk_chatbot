@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import ReactMarkdown from "react-markdown";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface Message {
   role: "user" | "assistant";
@@ -25,6 +26,9 @@ export default function ChatInterface() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [guestId, setGuestId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -41,6 +45,32 @@ export default function ChatInterface() {
   const modalScrollRef = useRef<HTMLDivElement>(null);
   const modalSentinelRef = useRef<HTMLDivElement>(null);
 
+  const loadConvo = useCallback(async (id: string | null) => {
+    if (!id) return;
+    setIsLoading(true);
+    setSidebarOpen(false);
+    setModalOpen(false);
+    try {
+      const currentUserId = session?.user?.email || guestId;
+      const res = await fetch(`/api/history?sessionId=${id}${id === "legacy" ? `&userId=${currentUserId}` : ""}`);
+      const data = await res.json();
+      if (data.messages) {
+        setMessages(data.messages.map((m: any) => ({
+          role: m.role,
+          content: m.content,
+          time: new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        })));
+        setSessionId(id);
+        document.cookie = `lastSessionId=${id}; path=/; max-age=${60 * 60 * 24 * 7}`;
+        if (id && id !== "legacy") router.push(`/?s=${id}`);
+      }
+    } catch (e) {
+      console.error("Failed to load convo:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session, guestId, router]);
+
   // Guest ID initialization
   useEffect(() => {
     const fetchHistory = async (id: string) => {
@@ -53,21 +83,37 @@ export default function ChatInterface() {
       }
     };
 
+    let id = guestId;
     if (!session) {
-      let id = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("guestId="))
-        ?.split("=")[1];
       if (!id) {
-        id = "guest_" + Math.random().toString(36).substring(2, 15);
-        document.cookie = `guestId=${id}; path=/; max-age=${60 * 60 * 24 * 30}`;
+        id = document.cookie
+          .split("; ")
+          .find((row) => row.startsWith("guestId="))
+          ?.split("=")[1] || null;
+        if (!id) {
+          id = "guest_" + Math.random().toString(36).substring(2, 15);
+          document.cookie = `guestId=${id}; path=/; max-age=${60 * 60 * 24 * 30}`;
+        }
+        setGuestId(id);
       }
-      setGuestId(id);
       fetchHistory(id);
     } else if (session?.user?.email) {
       fetchHistory(session.user.email);
     }
-  }, [session]);
+
+    // Handle initial sessionId from URL or Cookie
+    const urlSessionId = searchParams.get("s");
+    const cookieSessionId = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("lastSessionId="))
+      ?.split("=")[1] || null;
+
+    const initialSessionId = urlSessionId || cookieSessionId;
+
+    if (initialSessionId && !sessionId) {
+      loadConvo(initialSessionId);
+    }
+  }, [session, searchParams, loadConvo, guestId, sessionId]);
 
   // Close sidebar on outside click (mobile)
   useEffect(() => {
@@ -162,6 +208,16 @@ export default function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
+  const startNewChat = () => {
+    setMessages([]);
+    setSessionId(null);
+    setInput("");
+    setSidebarOpen(false);
+    document.cookie = "lastSessionId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    router.push("/");
+  };
+
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -177,6 +233,7 @@ export default function ChatInterface() {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           userId: session?.user?.email || guestId,
+          sessionId: sessionId,
         }),
       });
 
@@ -192,6 +249,12 @@ export default function ChatInterface() {
           },
         ]);
         return;
+      }
+
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
+        document.cookie = `lastSessionId=${data.sessionId}; path=/; max-age=${60 * 60 * 24 * 7}`;
+        router.push(`/?s=${data.sessionId}`);
       }
 
       if (data.content) {
@@ -244,11 +307,11 @@ export default function ChatInterface() {
             <div ref={modalScrollRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
               {/* First 6 always shown */}
               {visibleConvos.map((convo) => (
-                <ConvoCard key={convo._id} convo={convo} />
+                <ConvoCard key={convo._id} convo={convo} onClick={() => loadConvo(convo._id)} />
               ))}
               {/* Extra convos loaded via infinite scroll */}
               {modalConvos.map((convo) => (
-                <ConvoCard key={convo._id} convo={convo} />
+                <ConvoCard key={convo._id} convo={convo} onClick={() => loadConvo(convo._id)} />
               ))}
               {/* Sentinel for infinite scroll */}
               <div ref={modalSentinelRef} className="h-4" />
@@ -302,6 +365,16 @@ export default function ChatInterface() {
             </button>
           </div>
 
+          <div className="p-4 border-b border-slate-100 shrink-0">
+            <button 
+              onClick={startNewChat}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-tuk-green text-white font-bold text-sm hover:brightness-110 transition-all shadow-md group"
+            >
+              <span className="material-symbols-outlined text-lg group-hover:rotate-90 transition-transform">add</span>
+              New Chat
+            </button>
+          </div>
+
           <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
             {/* Past Conversations */}
             <section>
@@ -314,7 +387,12 @@ export default function ChatInterface() {
                 ) : (
                   <>
                     {visibleConvos.map((convo) => (
-                      <ConvoCard key={convo._id} convo={convo} />
+                      <ConvoCard 
+                        key={convo._id} 
+                        convo={convo} 
+                        active={sessionId === convo._id}
+                        onClick={() => loadConvo(convo._id)} 
+                      />
                     ))}
 
                     {hasMore && (
@@ -387,7 +465,38 @@ export default function ChatInterface() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 sm:py-8 custom-scrollbar">
             <div className="max-w-3xl mx-auto space-y-6">
-              {/* Removed SESSION START divider */}
+              {/* Empty State Greeting */}
+              {messages.length === 0 && !isLoading && (
+                <div className="flex flex-col items-center justify-center py-12 px-4 text-center animate-fade-in">
+                  <div className="w-20 h-20 rounded-3xl bg-tuk-green/10 flex items-center justify-center text-tuk-green mb-6 shadow-sm border-2 border-tuk-green/5">
+                    <span className="material-symbols-outlined text-4xl">smart_toy</span>
+                  </div>
+                  <h1 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">
+                    How can I help you today?
+                  </h1>
+                  <p className="text-sm text-slate-500 max-w-sm leading-relaxed font-medium">
+                    I'm your TUK Academic Assistant. Ask me anything about admissions, faculties, 
+                    programmes, or student life at the university.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-10 w-full max-w-md">
+                    <button 
+                      onClick={() => setInput("What are the requirements for Engineering?")}
+                      className="p-4 text-left rounded-2xl border-2 border-slate-50 hover:border-tuk-green/30 hover:bg-slate-50 transition-all group"
+                    >
+                      <p className="text-xs font-black text-tuk-green uppercase tracking-wider mb-1">Admissions</p>
+                      <p className="text-sm text-slate-600 font-medium line-clamp-1">Engineering requirements?</p>
+                    </button>
+                    <button 
+                      onClick={() => setInput("How do I access the student portal?")}
+                      className="p-4 text-left rounded-2xl border-2 border-slate-50 hover:border-tuk-green/30 hover:bg-slate-50 transition-all group"
+                    >
+                      <p className="text-xs font-black text-tuk-gold uppercase tracking-wider mb-1">Portals</p>
+                      <p className="text-sm text-slate-600 font-medium line-clamp-1">Access student portal?</p>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
@@ -470,16 +579,21 @@ export default function ChatInterface() {
 }
 
 /* ─── ConvoCard ─── */
-function ConvoCard({ convo }: { convo: Convo }) {
+function ConvoCard({ convo, active, onClick }: { convo: Convo; active?: boolean; onClick: () => void }) {
   return (
-    <button className="w-full flex items-center justify-between p-3 border-b border-slate-50 hover:bg-slate-50 transition-all text-left group">
-      <div className="flex items-center gap-3 overflow-hidden">
-        <span className="material-symbols-outlined text-slate-300 text-sm shrink-0">chat_bubble_outline</span>
-        <span className="text-sm text-slate-600 truncate font-medium">{convo.content}</span>
-      </div>
-      <span className="text-[10px] text-slate-300 font-bold shrink-0">
-        {new Date(convo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+    <button 
+      onClick={onClick}
+      className={`w-full flex items-center justify-between py-2 px-3 border-b border-slate-50 transition-all text-left group ${
+        active ? "bg-tuk-green/5 border-tuk-green/20" : "hover:bg-slate-50"
+      }`}
+    >
+      <span className={`text-xs truncate font-medium flex-1 pr-4 ${active ? "text-tuk-green" : "text-slate-600"}`}>
+        {convo.content}
       </span>
+      <div className="flex flex-col text-[9px] font-bold shrink-0 items-end text-slate-300 group-hover:text-tuk-green/60 transition-colors">
+        <span>{new Date(convo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+        <span>{new Date(convo.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
     </button>
   );
 }
