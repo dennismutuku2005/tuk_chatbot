@@ -253,6 +253,7 @@ export default function ChatInterface() {
 
       if (!response.ok) {
         const data = await response.json();
+        setIsLoading(false); // Clear here
         setMessages((prev) => [
           ...prev,
           {
@@ -263,6 +264,10 @@ export default function ChatInterface() {
         ]);
         return;
       }
+
+      // Clear loading state immediately for success
+      setIsLoading(false);
+
 
       // Handle Session ID from header
       const newSessionId = response.headers.get("X-Session-ID");

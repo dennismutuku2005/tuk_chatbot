@@ -32,8 +32,12 @@ export async function POST(req: NextRequest) {
     // Get the latest user message for RAG retrieval
     const userMessage = messages[messages.length - 1]?.content || "";
 
+    // OPTIMIZATION: Skip RAG for short greetings to save time (near-instant response)
+    const isGreeting = userMessage.length < 15 && /^(hello|hi|hey|how are you|good morning|good afternoon|good evening|yo|hola|greetings)/i.test(userMessage);
+
     // FETCH RELEVANT KNOWLEDGE (RAG)
-    const relevantContext = await getRelevantContext(userMessage);
+    const relevantContext = isGreeting ? "" : await getRelevantContext(userMessage);
+
 
     // Load memory context for this user
     let memoryContext = "";
