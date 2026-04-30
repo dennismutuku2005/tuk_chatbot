@@ -251,35 +251,54 @@ export default function ChatInterface() {
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
+        const data = await response.json();
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: `⚠️ Error: ${data.error || "Failed to get response"}. ${response.status === 429 ? "API Quota Exceeded. Please try again later." : ""}`,
+            content: `⚠️ Error: ${data.error || "Failed to get response"}.`,
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ]);
         return;
       }
 
-      if (data.sessionId) {
-        setSessionId(data.sessionId);
-        document.cookie = `lastSessionId=${data.sessionId}; path=/; max-age=${60 * 60 * 24 * 7}`;
-        router.push(`/?s=${data.sessionId}`);
+      // Handle Session ID from header
+      const newSessionId = response.headers.get("X-Session-ID");
+      if (newSessionId && newSessionId !== sessionId) {
+        setSessionId(newSessionId);
+        document.cookie = `lastSessionId=${newSessionId}; path=/; max-age=${60 * 60 * 24 * 7}`;
+        router.push(`/?s=${newSessionId}`);
       }
 
-      if (data.content) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: data.content,
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          },
-        ]);
+      // Initialize AI message for streaming
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: "",
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      // Read the stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          fullText += chunk;
+          
+          setMessages((prev) => {
+            const newMsgs = [...prev];
+            newMsgs[newMsgs.length - 1].content = fullText;
+            return newMsgs;
+          });
+        }
       }
     } catch (error) {
       console.error("Chat Error:", error);
@@ -287,6 +306,8 @@ export default function ChatInterface() {
       setIsLoading(false);
     }
   };
+
+
 
   const visibleConvos = pastConvos.slice(0, VISIBLE_LIMIT);
   const hasMore = pastConvos.length > VISIBLE_LIMIT;

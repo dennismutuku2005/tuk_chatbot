@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
       parts: [{ text: m.content }]
     }));
 
-    // Generate response using the latest Gemini 3 Flash Preview
-    const result = await ai.models.generateContent({
+    // Start generating streaming response
+    const streamResult = await ai.models.generateContentStream({
       model: "gemini-3-flash-preview",
       contents: contents,
       config: {
@@ -65,39 +65,51 @@ export async function POST(req: NextRequest) {
       }
     });
 
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        let fullText = "";
+        try {
+          for await (const chunk of streamResult.stream) {
+            const text = chunk.text();
+            if (text) {
+              fullText += text;
+              controller.enqueue(encoder.encode(text));
+            }
+          }
 
-    const responseText = result.text || "I'm sorry, I couldn't generate a response.";
+          // Save to DB in background after stream completes
+          if (userId) {
+            // Run background tasks without blocking the response
+            (async () => {
+              try {
+                if (messages[messages.length - 1]?.role === "user") {
+                  await Chat.create({ userId, sessionId, role: "user", content: userMessage });
+                }
+                await Chat.create({ userId, sessionId, role: "assistant", content: fullText });
+                await updateMemory(userId, messages, fullText);
+              } catch (e) {
+                console.error("Background save error:", e);
+              }
+            })();
+          }
 
-    // Save to DB
-    if (userId) {
-      // Save User Message if it's the last one in the array (and hasn't been saved)
-      if (messages[messages.length - 1]?.role === "user") {
-        await Chat.create({
-          userId,
-          sessionId,
-          role: "user",
-          content: userMessage,
-        });
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
       }
+    });
 
-      // Save AI Response
-      await Chat.create({
-        userId,
-        sessionId,
-        role: "assistant",
-        content: responseText,
-      });
-
-      // Update memory
-      await updateMemory(userId, messages, responseText);
-    }
-
-    return NextResponse.json({
-      content: responseText,
-      sessionId
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "X-Session-ID": sessionId
+      }
     });
 
   } catch (error: any) {
+
     console.error("Chat API Error:", error);
     return NextResponse.json({ 
       error: "Internal server error", 
