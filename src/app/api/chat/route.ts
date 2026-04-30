@@ -70,8 +70,10 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         let fullText = "";
         try {
-          for await (const chunk of streamResult.stream) {
-            const text = chunk.text();
+          for await (const chunk of streamResult) {
+            const text = typeof chunk.text === "function" ? chunk.text() : "";
+
+
             if (text) {
               fullText += text;
               controller.enqueue(encoder.encode(text));
