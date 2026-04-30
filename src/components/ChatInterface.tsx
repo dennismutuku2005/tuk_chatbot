@@ -110,10 +110,15 @@ export default function ChatInterface() {
 
     const initialSessionId = urlSessionId || cookieSessionId;
 
-    if (initialSessionId && !sessionId) {
+    // Only load if we have an ID AND it's different from current AND we didn't just clear it
+    if (initialSessionId && initialSessionId !== sessionId && sessionId !== null) {
+      loadConvo(initialSessionId);
+    } else if (initialSessionId && sessionId === null && !messages.length) {
+      // First load case
       loadConvo(initialSessionId);
     }
-  }, [session, searchParams, loadConvo, guestId, sessionId]);
+  }, [session, searchParams, loadConvo, guestId, sessionId, messages.length]);
+
 
   // Close sidebar on outside click (mobile)
   useEffect(() => {
@@ -209,13 +214,23 @@ export default function ChatInterface() {
   }, [messages]);
 
   const startNewChat = () => {
+    // Clear all states
     setMessages([]);
     setSessionId(null);
     setInput("");
     setSidebarOpen(false);
+    
+    // Clear cookies
     document.cookie = "lastSessionId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.push("/");
+    
+    // Use window.location instead of router.push to force a clean state if needed,
+    // or just ensure we navigate to the root without any parameters.
+    router.replace("/");
+    
+    // Explicitly focus textarea
+    textareaRef.current?.focus();
   };
+
 
 
   const handleSend = async () => {
