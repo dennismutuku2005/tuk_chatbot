@@ -110,14 +110,15 @@ export default function ChatInterface() {
 
     const initialSessionId = urlSessionId || cookieSessionId;
 
-    // Only load if we have an ID AND it's different from current AND we didn't just clear it
-    if (initialSessionId && initialSessionId !== sessionId && sessionId !== null) {
-      loadConvo(initialSessionId);
-    } else if (initialSessionId && sessionId === null && !messages.length) {
-      // First load case
+    // Load conversation if:
+    // 1. We have an initial ID (from URL/Cookie)
+    // 2. AND we haven't loaded any session yet (sessionId is null)
+    // 3. AND there are no messages yet (to avoid overwriting a brand new chat)
+    if (initialSessionId && !sessionId && messages.length === 0) {
       loadConvo(initialSessionId);
     }
-  }, [session, searchParams, loadConvo, guestId, sessionId, messages.length]);
+  }, [session, searchParams, loadConvo, guestId, sessionId]);
+
 
 
   // Close sidebar on outside click (mobile)
