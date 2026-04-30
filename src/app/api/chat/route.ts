@@ -59,9 +59,12 @@ export async function POST(req: NextRequest) {
     // Generate response using the latest Gemini 3 Flash Preview
     const result = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      systemInstruction: systemInstruction,
-      contents: contents
+      contents: contents,
+      config: {
+        systemInstruction: systemInstruction
+      }
     });
+
 
     const responseText = result.text || "I'm sorry, I couldn't generate a response.";
 
