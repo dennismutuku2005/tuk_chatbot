@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/lib/db";
+import dbConnect from "@/lib/mongodb";
 import Chat from "@/models/Chat";
 import Memory from "@/models/Memory";
-import systemPromptData from "@/lib/system_prompt.json";
-import { getRelevantContext } from "@/lib/rag";
+import systemPromptData from "@/constants/systemPrompt.json";
+import { getRelevantContext } from "@/lib/rag/retriever";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY!;
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // Generate or use existing sessionId
     const sessionId = incomingSessionId || crypto.randomUUID();
 
-    // Get the latest user message
+    // Get the latest user message for RAG retrieval
     const userMessage = messages[messages.length - 1]?.content || "";
 
     // FETCH RELEVANT KNOWLEDGE (RAG)
@@ -49,8 +49,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build system prompt from JSON + RAG Context
+    // Build system prompt from Constant + RAG Context
     const systemInstruction = systemPromptData.system_instructions + "\n\n" + relevantContext + memoryContext;
+
 
     // Prepare messages for Groq Chat Completion
     const groqMessages = [
