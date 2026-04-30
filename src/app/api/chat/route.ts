@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       contents: contents
     });
 
-    const responseText = result.text;
+    const responseText = result.text || "I'm sorry, I couldn't generate a response.";
 
     // Save to DB
     if (userId) {
