@@ -71,7 +71,9 @@ export default function ChatInterface() {
     }
   }, [session, guestId, router]);
 
-  // Guest ID initialization
+  const initialLoadAttempted = useRef(false);
+
+  // Guest ID initialization & Initial Load
   useEffect(() => {
     const fetchHistory = async (id: string) => {
       try {
@@ -110,14 +112,13 @@ export default function ChatInterface() {
 
     const initialSessionId = urlSessionId || cookieSessionId;
 
-    // Load conversation if:
-    // 1. We have an initial ID (from URL/Cookie)
-    // 2. AND we haven't loaded any session yet (sessionId is null)
-    // 3. AND there are no messages yet (to avoid overwriting a brand new chat)
-    if (initialSessionId && !sessionId && messages.length === 0) {
+    // ONLY load automatically if we haven't tried yet AND we don't have a session active
+    if (!initialLoadAttempted.current && initialSessionId && !sessionId) {
+      initialLoadAttempted.current = true;
       loadConvo(initialSessionId);
     }
   }, [session, searchParams, loadConvo, guestId, sessionId]);
+
 
 
 
@@ -215,22 +216,19 @@ export default function ChatInterface() {
   }, [messages]);
 
   const startNewChat = () => {
-    // Clear all states
+    // Prevent the initial loader from kicking in
+    initialLoadAttempted.current = true;
+    
     setMessages([]);
     setSessionId(null);
     setInput("");
     setSidebarOpen(false);
     
-    // Clear cookies
     document.cookie = "lastSessionId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    
-    // Use window.location instead of router.push to force a clean state if needed,
-    // or just ensure we navigate to the root without any parameters.
     router.replace("/");
-    
-    // Explicitly focus textarea
     textareaRef.current?.focus();
   };
+
 
 
 
