@@ -23,7 +23,10 @@ export async function getRelevantContext(query: string, limit: number = 3): Prom
 
     // Refresh cache if empty or expired
     if (!knowledgeCache || (Date.now() - lastCacheUpdate > CACHE_TTL)) {
-      knowledgeCache = await Knowledge.find({});
+      knowledgeCache = await Knowledge.aggregate([
+        { $limit: 20 },
+        { $project: { _id: 1, content: 1, embedding: 1 } }
+      ]);
       lastCacheUpdate = Date.now();
     }
     
@@ -32,7 +35,7 @@ export async function getRelevantContext(query: string, limit: number = 3): Prom
     }
 
     const scoredKnowledge = knowledgeCache.map(k => ({
-      content: k.content,
+      content: k.content.length > 1000 ? k.content.slice(0, 1000) + "..." : k.content,
       similarity: cosineSimilarity(queryEmbedding, k.embedding)
     }));
 

@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
         }
       },
       { $sort: { createdAt: -1 } },
-      { $limit: 50 }
+      { $limit: 20 },
+      { $project: { _id: 1, content: 1, createdAt: 1 } }
     ]);
 
     return NextResponse.json({ convos: pastConvos });

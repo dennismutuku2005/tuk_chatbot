@@ -26,22 +26,25 @@ export async function POST(req: NextRequest) {
     // OPTIMIZATION: Skip RAG for short greetings
     const isGreeting = userMessage.length < 15 && /^(hello|hi|hey|how are you|good morning|good afternoon|good evening|yo|hola|greetings)/i.test(userMessage);
 
-    const relevantContext = isGreeting ? "" : await getRelevantContext(userMessage);
+    // Limit RAG context to top 2 results and max 3000 chars to save tokens
+    const relevantContext = isGreeting ? "" : await getRelevantContext(userMessage, 2);
 
     let memoryContext = "";
     if (userId) {
       const memory = await Memory.findOne({ userId });
       if (memory?.contextSummary) {
-        memoryContext = `\n\n## User Context (from previous sessions)\n${memory.contextSummary}`;
+        memoryContext = `\n\n## User Context\n${memory.contextSummary}`;
         if (memory.keyDetails?.length > 0) {
-          memoryContext += `\nKey details about this user: ${memory.keyDetails.join(", ")}`;
+          memoryContext += `\nKey details: ${memory.keyDetails.slice(-5).join(", ")}`;
         }
       }
     }
 
-    const systemInstruction = systemPromptData.system_instructions + "\n\n" + relevantContext + memoryContext;
+    const systemInstruction = systemPromptData.system_instructions + "\n\n" + (relevantContext ? `### RELEVANT INFO:\n${relevantContext}` : "") + memoryContext;
 
-    const contents = messages.map((m: any) => ({
+    // LIMIT HISTORY: Only send last 6 messages to keep prompt size small
+    const recentMessages = messages.slice(-6);
+    const contents = recentMessages.map((m: any) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }]
     }));
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
       model: "gemini-3-flash-preview",
       contents: contents,
       config: {
-        systemInstruction: systemInstruction
+        systemInstruction: systemInstruction.slice(0, 5000) // Safety cap
       }
     });
 
@@ -68,7 +71,6 @@ export async function POST(req: NextRequest) {
               fullText += text;
               controller.enqueue(encoder.encode(text));
             }
-            // Capture usage metadata if available in the chunk (usually in the last one)
             if (chunk.usageMetadata) {
               finalUsage = chunk.usageMetadata;
             }
@@ -138,27 +140,21 @@ async function updateMemory(userId: string, messages: any[], aiResponse: string)
     const lastUserMsg = messages[messages.length - 1]?.content || "";
     const keyDetails: string[] = [];
 
-    const programmeMatch = lastUserMsg.match(
-      /\b(engineering|computer science|IT|information technology|architecture|medicine|nursing|business|law|biology|chemistry|physics|math)\b/i
-    );
-    if (programmeMatch) {
-      keyDetails.push(`Interested in ${programmeMatch[0]}`);
-    }
+    const keywords = ["engineering", "computer science", "IT", "architecture", "medicine", "nursing", "business", "law"];
+    keywords.forEach(kw => {
+      if (lastUserMsg.toLowerCase().includes(kw)) keyDetails.push(`Interested in ${kw}`);
+    });
 
     if (/admission|apply|application|intake|join|enroll/i.test(lastUserMsg)) {
       keyDetails.push("Asked about admissions");
     }
 
-    if (/fee|fees|cost|payment|scholarship/i.test(lastUserMsg)) {
-      keyDetails.push("Asked about fees or funding");
-    }
-
     const recentExchange = messages
-      .slice(-4)
-      .map((m) => `${m.role === "user" ? "Student" : "TUK Bot"}: ${m.content.slice(0, 120)}`)
+      .slice(-2)
+      .map((m) => `${m.role === "user" ? "Student" : "Bot"}: ${m.content.slice(0, 100)}`)
       .join("\n");
 
-    const contextSummary = `Recent conversation:\n${recentExchange}\n\nBot last replied: ${aiResponse.slice(0, 200)}`;
+    const contextSummary = `Last exchange:\n${recentExchange}\nBot: ${aiResponse.slice(0, 150)}`;
 
     await Memory.findOneAndUpdate(
       { userId },
