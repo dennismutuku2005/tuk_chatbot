@@ -2,6 +2,7 @@ import { pipeline } from '@xenova/transformers';
 
 let extractor: any = null;
 
+
 /**
  * Initializes and returns the local embedding extractor.
  * Uses the industry-standard all-MiniLM-L6-v2 model.
